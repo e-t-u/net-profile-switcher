@@ -1,0 +1,15 @@
+{
+  "uuid": "net-profile-switcher@etu",
+  "name": "Network Profile Switcher",
+  "description": "Switch and monitor network profiles (Estonia VPN, Finland VPN, Local network, Timezone, and Tailscale) directly from the top panel.",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50"
+  ],
+  "url": "https://github.com/e-t-u/net-profile-switcher",
+  "version": 1
+}

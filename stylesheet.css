@@ -1,0 +1,64 @@
+/* Network Profile Switcher Stylesheet */
+
+.net-panel-box {
+    spacing: 6px;
+}
+
+.net-panel-label {
+    font-weight: bold;
+}
+
+.net-menu-container {
+    padding: 10px 14px;
+    spacing: 10px;
+    min-width: 320px;
+}
+
+.net-header-title {
+    font-size: 13pt;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.net-status-badge {
+    font-size: 9pt;
+    font-weight: bold;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background-color: rgba(2, 132, 199, 0.25);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+}
+
+.net-details-box {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 8px 12px;
+    spacing: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.net-detail-row {
+    spacing: 8px;
+}
+
+.net-detail-label {
+    font-size: 9pt;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.net-detail-val {
+    font-size: 9.5pt;
+    color: #f1f5f9;
+    font-weight: bold;
+}
+
+.net-section-title {
+    font-size: 9pt;
+    font-weight: bold;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding-top: 4px;
+}
