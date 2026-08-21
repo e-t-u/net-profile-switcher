@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """
 Network Profile Manager for Fedora Workstation.
-Manages switching between:
+Manages switching network profiles, routing gateways, DNS servers, and Tailscale.
+
+Profiles:
 - Estonia VPN (Route .1 + VPN + EET)
 - Finland VPN (Route .1 + VPN + EET)
 - Route .1 + Tailscale (Direct Gateway + Tailscale + WIB)
 - Route .1 without VPN (Direct Gateway + Tailscale Down + WIB)
 - Local .100 Profile (Repeater Gateway + Tailscale + WIB)
 
-Outputs JSON for GNOME Shell extension integration or formatted text for CLI.
+DNS Options:
+- 192.168.123.1 (Direct Fiber Router)
+- 192.168.123.100 (Repeater Hop)
+- 1.1.1.1 (Cloudflare)
+- 8.8.8.8 (Google)
 """
 
 import sys
@@ -23,6 +29,16 @@ def run_cmd(cmd):
     except Exception as e:
         return 1, "", str(e)
 
+def get_default_interface():
+    rc, out, _ = run_cmd("ip route show default")
+    if rc == 0 and out:
+        words = out.split()
+        if "dev" in words:
+            idx = words.index("dev")
+            if idx + 1 < len(words):
+                return words[idx + 1]
+    return "wlp3s0"
+
 def get_dns_servers():
     dns_entries = []
     rc, out, _ = run_cmd("resolvectl dns")
@@ -34,7 +50,6 @@ def get_dns_servers():
                 link_name = parts[0].strip()
                 servers = parts[1].strip()
                 if servers:
-                    # e.g., wlp3s0: 192.168.123.100 or tailscale0: 100.100.100.100
                     clean_link = link_name.split("(")[-1].replace(")", "").strip()
                     dns_entries.append(f"{servers} ({clean_link})")
     if not dns_entries:
@@ -55,6 +70,7 @@ def get_status():
         "icon": "network-workgroup-symbolic",
         "route_gateway": "unknown",
         "gateway_ip": "unknown",
+        "interface": get_default_interface(),
         "nordvpn_status": "Disconnected",
         "nordvpn_country": None,
         "nordvpn_server": None,
@@ -168,7 +184,6 @@ def set_profile_finland():
     return get_status()
 
 def set_profile_direct_ts():
-    """Route .1 + Tailscale UP + Local Timezone (No NordVPN)"""
     cmds = [
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
@@ -180,7 +195,6 @@ def set_profile_direct_ts():
     return get_status()
 
 def set_profile_direct_novpn():
-    """Route .1 + Tailscale DOWN + Local Timezone (No NordVPN)"""
     cmds = [
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
@@ -192,7 +206,6 @@ def set_profile_direct_novpn():
     return get_status()
 
 def set_profile_local():
-    """Route .100 + Tailscale UP + Local Timezone (No NordVPN)"""
     cmds = [
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.100 dev wlp3s0",
@@ -201,6 +214,25 @@ def set_profile_local():
     ]
     for c in cmds:
         run_cmd(c)
+    return get_status()
+
+def set_dns(dns_target):
+    iface = get_default_interface()
+    target = dns_target.strip().lower()
+    
+    if target in ("1", "192.168.123.1", ".1", "direct"):
+        dns_ips = "192.168.123.1"
+    elif target in ("100", "192.168.123.100", ".100", "repeater", "local"):
+        dns_ips = "192.168.123.100"
+    elif target in ("1.1.1.1", "cloudflare", "cf"):
+        dns_ips = "1.1.1.1 1.0.0.1"
+    elif target in ("8.8.8.8", "google", "goog"):
+        dns_ips = "8.8.8.8 8.8.4.4"
+    else:
+        dns_ips = dns_target
+
+    run_cmd(f"sudo resolvectl dns {iface} {dns_ips}")
+    run_cmd("sudo resolvectl flush-caches")
     return get_status()
 
 def launch_chrome(tz=None):
@@ -213,7 +245,6 @@ def main():
     args = sys.argv[1:]
     wants_json = False
 
-    # Extract --json or -j if present anywhere
     filtered_args = []
     for a in args:
         if a in ("--json", "-j"):
@@ -233,6 +264,9 @@ def main():
         res = set_profile_direct_novpn()
     elif cmd in ("local", "normal", "repeater", "100"):
         res = set_profile_local()
+    elif cmd == "dns":
+        target = filtered_args[1] if len(filtered_args) > 1 else "1.1.1.1"
+        res = set_dns(target)
     elif cmd == "chrome":
         tz = None
         if len(filtered_args) > 1:
@@ -243,7 +277,6 @@ def main():
     else:
         res = get_status()
 
-    # Always output JSON if requested or if command was status / profile switch
     if wants_json or len(args) == 0:
         print(json.dumps(res, indent=2, ensure_ascii=False))
     else:

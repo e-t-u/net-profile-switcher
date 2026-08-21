@@ -176,6 +176,49 @@ class NetProfileIndicator extends PanelMenu.Button {
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // DNS Selection Section Header
+        const dnsSectionHeader = new PopupMenu.PopupMenuItem(_('Set DNS Server'), {
+            reactive: false,
+            can_focus: false,
+            style_class: 'net-section-title'
+        });
+        this.menu.addMenuItem(dnsSectionHeader);
+
+        // DNS .1
+        const itemDns1 = new PopupMenu.PopupImageMenuItem(
+            _('DNS: 192.168.123.1 (Direct Router)'),
+            'network-server-symbolic'
+        );
+        itemDns1.connect('activate', () => this._setDns('192.168.123.1'));
+        this.menu.addMenuItem(itemDns1);
+
+        // DNS .100
+        const itemDns100 = new PopupMenu.PopupImageMenuItem(
+            _('DNS: 192.168.123.100 (Repeater)'),
+            'network-server-symbolic'
+        );
+        itemDns100.connect('activate', () => this._setDns('192.168.123.100'));
+        this.menu.addMenuItem(itemDns100);
+
+        // DNS 1.1.1.1
+        const itemDnsCF = new PopupMenu.PopupImageMenuItem(
+            _('DNS: 1.1.1.1 (Cloudflare)'),
+            'network-server-symbolic'
+        );
+        itemDnsCF.connect('activate', () => this._setDns('1.1.1.1'));
+        this.menu.addMenuItem(itemDnsCF);
+
+        // DNS 8.8.8.8
+        const itemDnsGoogle = new PopupMenu.PopupImageMenuItem(
+            _('DNS: 8.8.8.8 (Google)'),
+            'network-server-symbolic'
+        );
+        itemDnsGoogle.connect('activate', () => this._setDns('8.8.8.8'));
+        this.menu.addMenuItem(itemDnsGoogle);
+
+        // Separator
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
         // Browser Launch Section Header
         const browserSectionHeader = new PopupMenu.PopupMenuItem(_('Launch Chrome in Timezone'), {
             reactive: false,
@@ -255,6 +298,20 @@ class NetProfileIndicator extends PanelMenu.Button {
             console.error(`[NetProfile] Failed to switch profile: ${e}`);
             this._panelLabel.set_text('Error switching');
             this._headerBadge.set_text('Error');
+        } finally {
+            this._busy = false;
+        }
+    }
+
+    async _setDns(targetDns) {
+        this._busy = true;
+        this._lblDNS.set_text(`Setting DNS to ${targetDns}...`);
+        try {
+            const raw = await runScriptAsync(['dns', targetDns, '--json']);
+            const data = JSON.parse(raw);
+            this._updateUI(data);
+        } catch (e) {
+            console.error(`[NetProfile] Failed to set DNS: ${e}`);
         } finally {
             this._busy = false;
         }
