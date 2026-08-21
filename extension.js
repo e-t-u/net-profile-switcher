@@ -103,11 +103,13 @@ class NetProfileIndicator extends PanelMenu.Button {
         });
 
         this._lblGateway = new St.Label({ text: 'Gateway: ...', style_class: 'net-detail-val' });
+        this._lblDNS = new St.Label({ text: 'DNS: ...', style_class: 'net-detail-val' });
         this._lblNord = new St.Label({ text: 'NordVPN: ...', style_class: 'net-detail-val' });
         this._lblTailscale = new St.Label({ text: 'Tailscale: ...', style_class: 'net-detail-val' });
         this._lblTimezone = new St.Label({ text: 'Timezone: ...', style_class: 'net-detail-val' });
 
         detailsBox.add_child(this._lblGateway);
+        detailsBox.add_child(this._lblDNS);
         detailsBox.add_child(this._lblNord);
         detailsBox.add_child(this._lblTailscale);
         detailsBox.add_child(this._lblTimezone);
@@ -131,25 +133,41 @@ class NetProfileIndicator extends PanelMenu.Button {
         });
         this.menu.addMenuItem(switchSectionHeader);
 
-        // 1. Estonia
+        // 1. Estonia Profile
         const itemEE = new PopupMenu.PopupImageMenuItem(
-            _('Estonia Profile (Route .1 + VPN + EET)'),
+            _('🇪🇪 Estonia VPN (Route .1 + VPN + EET)'),
             'network-vpn-symbolic'
         );
         itemEE.connect('activate', () => this._switchProfile('estonia'));
         this.menu.addMenuItem(itemEE);
 
-        // 2. Finland
+        // 2. Finland Profile
         const itemFI = new PopupMenu.PopupImageMenuItem(
-            _('Finland Profile (Route .1 + VPN + EET)'),
+            _('🇫🇮 Finland VPN (Route .1 + VPN + EET)'),
             'network-vpn-symbolic'
         );
         itemFI.connect('activate', () => this._switchProfile('finland'));
         this.menu.addMenuItem(itemFI);
 
-        // 3. Local (Jakarta)
+        // 3. Route .1 + Tailscale
+        const itemRoute1TS = new PopupMenu.PopupImageMenuItem(
+            _('⚡ Direct Route .1 + Tailscale (No VPN)'),
+            'network-wireless-symbolic'
+        );
+        itemRoute1TS.connect('activate', () => this._switchProfile('direct-ts'));
+        this.menu.addMenuItem(itemRoute1TS);
+
+        // 4. Route .1 No VPN (Clean)
+        const itemRoute1Clean = new PopupMenu.PopupImageMenuItem(
+            _('⚡ Direct Route .1 Clean (No VPN, No TS)'),
+            'network-wireless-symbolic'
+        );
+        itemRoute1Clean.connect('activate', () => this._switchProfile('direct-novpn'));
+        this.menu.addMenuItem(itemRoute1Clean);
+
+        // 5. Local .100 (Repeater Hop)
         const itemLocal = new PopupMenu.PopupImageMenuItem(
-            _('Local Profile (Route .100 + Tailscale + WIB)'),
+            _('🏠 Local Route .100 (Repeater + Tailscale)'),
             'network-workgroup-symbolic'
         );
         itemLocal.connect('activate', () => this._switchProfile('local'));
@@ -227,7 +245,7 @@ class NetProfileIndicator extends PanelMenu.Button {
 
     async _switchProfile(target) {
         this._busy = true;
-        this._panelLabel.set_text(`Switching to ${target}...`);
+        this._panelLabel.set_text(`Switching...`);
         this._headerBadge.set_text('Switching...');
         try {
             const raw = await runScriptAsync([target, '--json']);
@@ -257,16 +275,15 @@ class NetProfileIndicator extends PanelMenu.Button {
         if (!data) return;
 
         // Update Panel
-        this._panelLabel.set_text(data.label || 'Unknown');
-        if (data.profile === 'estonia' || data.profile === 'finland' || data.profile === 'vpn_other') {
-            this._panelIcon.set_icon_name('network-vpn-symbolic');
-        } else {
-            this._panelIcon.set_icon_name('network-workgroup-symbolic');
+        this._panelLabel.set_text(data.short_label || data.label || 'Unknown');
+        if (data.icon) {
+            this._panelIcon.set_icon_name(data.icon);
         }
 
         // Update Menu
         this._headerBadge.set_text(data.label || 'Unknown');
         this._lblGateway.set_text(`Gateway:   ${data.route_gateway || 'Unknown'}`);
+        this._lblDNS.set_text(`DNS:       ${data.dns || 'Unknown'}`);
         this._lblNord.set_text(`NordVPN:   ${data.nordvpn_status} ${data.nordvpn_server ? `(${data.nordvpn_server})` : ''}`);
         this._lblTailscale.set_text(`Tailscale: ${data.tailscale_up ? 'Connected' : 'Stopped'}`);
         this._lblTimezone.set_text(`Timezone:  ${data.timezone || 'Unknown'}`);

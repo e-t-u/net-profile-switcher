@@ -1,44 +1,76 @@
 #!/usr/bin/env python3
 """
 Network Profile Manager for Fedora Workstation.
-Manages switching between Local (Jakarta), Estonia VPN, and Finland VPN profiles.
-Outputs JSON for GNOME Shell extension integration.
+Manages switching between:
+- Estonia VPN (Route .1 + VPN + EET)
+- Finland VPN (Route .1 + VPN + EET)
+- Route .1 + Tailscale (Direct Gateway + Tailscale + WIB)
+- Route .1 without VPN (Direct Gateway + Tailscale Down + WIB)
+- Local .100 Profile (Repeater Gateway + Tailscale + WIB)
+
+Outputs JSON for GNOME Shell extension integration or formatted text for CLI.
 """
 
 import sys
 import os
 import json
 import subprocess
-import argparse
 
-def run_cmd(cmd, check=False):
+def run_cmd(cmd):
     try:
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=25)
         return res.returncode, res.stdout.strip(), res.stderr.strip()
     except Exception as e:
         return 1, "", str(e)
 
+def get_dns_servers():
+    dns_entries = []
+    rc, out, _ = run_cmd("resolvectl dns")
+    if rc == 0 and out:
+        for line in out.splitlines():
+            line = line.strip()
+            if ":" in line:
+                parts = line.split(":", 1)
+                link_name = parts[0].strip()
+                servers = parts[1].strip()
+                if servers:
+                    # e.g., wlp3s0: 192.168.123.100 or tailscale0: 100.100.100.100
+                    clean_link = link_name.split("(")[-1].replace(")", "").strip()
+                    dns_entries.append(f"{servers} ({clean_link})")
+    if not dns_entries:
+        try:
+            with open("/etc/resolv.conf") as f:
+                for line in f:
+                    if line.startswith("nameserver"):
+                        dns_entries.append(line.split()[1])
+        except Exception:
+            pass
+    return ", ".join(dns_entries) if dns_entries else "Unknown"
+
 def get_status():
     status = {
         "profile": "unknown",
         "label": "Unknown",
+        "short_label": "Net: ...",
         "icon": "network-workgroup-symbolic",
         "route_gateway": "unknown",
+        "gateway_ip": "unknown",
         "nordvpn_status": "Disconnected",
         "nordvpn_country": None,
         "nordvpn_server": None,
         "nordvpn_ip": None,
         "tailscale_up": False,
         "timezone": "unknown",
-        "public_ip": None,
-        "public_country": None
+        "dns": get_dns_servers()
     }
 
     # 1. Route gateway
     _, out, _ = run_cmd("ip route show default")
-    if "via 192.168.123.1 " in out or "via 192.168.123.1\n" in out:
-        status["route_gateway"] = "192.168.123.1 (Direct/Bypass)"
+    if "via 192.168.123.1 " in out or "via 192.168.123.1\n" in out or out.startswith("default via 192.168.123.1"):
+        status["gateway_ip"] = "192.168.123.1"
+        status["route_gateway"] = "192.168.123.1 (Direct Fiber)"
     elif "via 192.168.123.100" in out:
+        status["gateway_ip"] = "192.168.123.100"
         status["route_gateway"] = "192.168.123.100 (Repeater Hop)"
     else:
         first_line = out.split("\n")[0] if out else "Unknown"
@@ -70,25 +102,46 @@ def get_status():
     _, out, _ = run_cmd("timedatectl show -p Timezone --value")
     status["timezone"] = out.strip() if out else "Unknown"
 
-    # Determine Active Profile
+    # 5. Determine Active Profile & Labels
     if status["nordvpn_status"] == "Connected":
         c = (status["nordvpn_country"] or "").lower()
         if "estonia" in c or "tallinn" in status["timezone"].lower():
             status["profile"] = "estonia"
-            status["label"] = "🇪🇪 Estonia"
+            status["label"] = "🇪🇪 Estonia (VPN)"
+            status["short_label"] = "🇪🇪 EE"
+            status["icon"] = "network-vpn-symbolic"
         elif "finland" in c or "helsinki" in status["timezone"].lower():
             status["profile"] = "finland"
-            status["label"] = "🇫🇮 Finland"
+            status["label"] = "🇫🇮 Finland (VPN)"
+            status["short_label"] = "🇫🇮 FI"
+            status["icon"] = "network-vpn-symbolic"
         else:
             status["profile"] = "vpn_other"
             status["label"] = f"🛡️ {status['nordvpn_country'] or 'VPN'}"
+            status["short_label"] = "🛡️ VPN"
+            status["icon"] = "network-vpn-symbolic"
     else:
-        if "jakarta" in status["timezone"].lower() and "192.168.123.100" in status["route_gateway"]:
+        if status["gateway_ip"] == "192.168.123.1":
+            if status["tailscale_up"]:
+                status["profile"] = "direct_ts"
+                status["label"] = "⚡ Direct (.1) + Tailscale"
+                status["short_label"] = "⚡ .1 + TS"
+                status["icon"] = "network-wireless-symbolic"
+            else:
+                status["profile"] = "direct_novpn"
+                status["label"] = "⚡ Direct (.1) No VPN"
+                status["short_label"] = "⚡ .1 Clean"
+                status["icon"] = "network-wireless-symbolic"
+        elif status["gateway_ip"] == "192.168.123.100":
             status["profile"] = "local"
-            status["label"] = "🏠 Local"
+            status["label"] = "🏠 Local (.100)"
+            status["short_label"] = "🏠 Local"
+            status["icon"] = "network-workgroup-symbolic"
         else:
             status["profile"] = "custom"
             status["label"] = "⚙️ Custom"
+            status["short_label"] = "⚙️ Net"
+            status["icon"] = "network-workgroup-symbolic"
 
     return status
 
@@ -114,7 +167,32 @@ def set_profile_finland():
         run_cmd(c)
     return get_status()
 
+def set_profile_direct_ts():
+    """Route .1 + Tailscale UP + Local Timezone (No NordVPN)"""
+    cmds = [
+        "nordvpn disconnect",
+        "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
+        "sudo timedatectl set-timezone Asia/Jakarta",
+        "sudo tailscale up"
+    ]
+    for c in cmds:
+        run_cmd(c)
+    return get_status()
+
+def set_profile_direct_novpn():
+    """Route .1 + Tailscale DOWN + Local Timezone (No NordVPN)"""
+    cmds = [
+        "nordvpn disconnect",
+        "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
+        "sudo tailscale down",
+        "sudo timedatectl set-timezone Asia/Jakarta"
+    ]
+    for c in cmds:
+        run_cmd(c)
+    return get_status()
+
 def set_profile_local():
+    """Route .100 + Tailscale UP + Local Timezone (No NordVPN)"""
     cmds = [
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.100 dev wlp3s0",
@@ -132,37 +210,46 @@ def launch_chrome(tz=None):
     return {"status": "launched", "timezone": tz or "default"}
 
 def main():
-    parser = argparse.ArgumentParser(description="Network Profile Switcher")
-    subparsers = parser.add_subparsers(dest="command")
+    args = sys.argv[1:]
+    wants_json = False
 
-    subparsers.add_parser("status", help="Get current profile status")
-    subparsers.add_parser("estonia", help="Switch to Estonia profile")
-    subparsers.add_parser("finland", help="Switch to Finland profile")
-    subparsers.add_parser("local", help="Switch to Local (Jakarta) profile")
+    # Extract --json or -j if present anywhere
+    filtered_args = []
+    for a in args:
+        if a in ("--json", "-j"):
+            wants_json = True
+        else:
+            filtered_args.append(a)
 
-    p_chrome = subparsers.add_parser("chrome", help="Launch Chrome Dev Flatpak")
-    p_chrome.add_argument("--tz", choices=["Europe/Tallinn", "Europe/Helsinki", "Asia/Jakarta"], help="Override Timezone")
+    cmd = filtered_args[0].lower() if filtered_args else "status"
 
-    parser.add_argument("--json", action="store_true", help="Output JSON format")
-
-    args = parser.parse_args()
-
-    if args.command == "estonia":
+    if cmd in ("estonia", "ee"):
         res = set_profile_estonia()
-    elif args.command == "finland":
+    elif cmd in ("finland", "fi"):
         res = set_profile_finland()
-    elif args.command == "local":
+    elif cmd in ("direct-ts", "direct_ts", "route1-ts", "direct-tailscale"):
+        res = set_profile_direct_ts()
+    elif cmd in ("direct-novpn", "direct_novpn", "route1-novpn", "direct-clean"):
+        res = set_profile_direct_novpn()
+    elif cmd in ("local", "normal", "repeater", "100"):
         res = set_profile_local()
-    elif args.command == "chrome":
-        res = launch_chrome(args.tz)
+    elif cmd == "chrome":
+        tz = None
+        if len(filtered_args) > 1:
+            tz = filtered_args[1].replace("--tz=", "").replace("--tz", "")
+            if len(filtered_args) > 2 and not tz:
+                tz = filtered_args[2]
+        res = launch_chrome(tz)
     else:
         res = get_status()
 
-    if args.json or args.command == "status":
+    # Always output JSON if requested or if command was status / profile switch
+    if wants_json or len(args) == 0:
         print(json.dumps(res, indent=2, ensure_ascii=False))
     else:
         print(f"Active Profile: {res.get('label', 'Unknown')}")
         print(f"Gateway:        {res.get('route_gateway')}")
+        print(f"DNS Server(s):  {res.get('dns')}")
         print(f"NordVPN:        {res.get('nordvpn_status')} ({res.get('nordvpn_server') or 'None'})")
         print(f"Tailscale:      {'Connected' if res.get('tailscale_up') else 'Stopped'}")
         print(f"Timezone:       {res.get('timezone')}")
