@@ -227,6 +227,57 @@ class NetProfileIndicator extends PanelMenu.Button {
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+        // Tailscale Exit Node Section Header
+        const exitNodeSectionHeader = new PopupMenu.PopupMenuItem(_('Tailscale Exit Node'), {
+            reactive: false,
+            can_focus: false,
+            style_class: 'net-section-title'
+        });
+        this.menu.addMenuItem(exitNodeSectionHeader);
+
+        // Exit Node: None (Direct Internet)
+        const itemExitNone = new PopupMenu.PopupImageMenuItem(
+            _('Exit Node: None (Direct / Fast WAN)'),
+            'network-wireless-symbolic'
+        );
+        itemExitNone.connect('activate', () => this._setExitNode('none'));
+        this.menu.addMenuItem(itemExitNone);
+
+        // Exit Node: Singapore
+        const itemExitSin = new PopupMenu.PopupImageMenuItem(
+            _('Exit Node: 🇸🇬 Singapore (singapore)'),
+            'network-server-symbolic'
+        );
+        itemExitSin.connect('activate', () => this._setExitNode('singapore'));
+        this.menu.addMenuItem(itemExitSin);
+
+        // Exit Node: Finland
+        const itemExitFI = new PopupMenu.PopupImageMenuItem(
+            _('Exit Node: 🇫🇮 Finland (suomi)'),
+            'network-server-symbolic'
+        );
+        itemExitFI.connect('activate', () => this._setExitNode('suomi'));
+        this.menu.addMenuItem(itemExitFI);
+
+        // Exit Node: Indonesia 1
+        const itemExitIndo1 = new PopupMenu.PopupImageMenuItem(
+            _('Exit Node: 🇮🇩 Indonesia 1 (indo1)'),
+            'network-server-symbolic'
+        );
+        itemExitIndo1.connect('activate', () => this._setExitNode('indo1'));
+        this.menu.addMenuItem(itemExitIndo1);
+
+        // Exit Node: Indonesia 2
+        const itemExitIndo2 = new PopupMenu.PopupImageMenuItem(
+            _('Exit Node: 🇮🇩 Indonesia 2 (indo2)'),
+            'network-server-symbolic'
+        );
+        itemExitIndo2.connect('activate', () => this._setExitNode('indo2'));
+        this.menu.addMenuItem(itemExitIndo2);
+
+        // Separator
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
         // Browser Launch Section Header
         const browserSectionHeader = new PopupMenu.PopupMenuItem(_('Launch Chrome in Timezone'), {
             reactive: false,
@@ -311,6 +362,20 @@ class NetProfileIndicator extends PanelMenu.Button {
         }
     }
 
+    async _setExitNode(targetNode) {
+        this._busy = true;
+        this._lblTailscale.set_text(`Setting exit node to ${targetNode}...`);
+        try {
+            const raw = await runScriptAsync(['exit-node', targetNode, '--json']);
+            const data = JSON.parse(raw);
+            this._updateUI(data);
+        } catch (e) {
+            console.error(`[NetProfile] Failed to set exit node: ${e}`);
+        } finally {
+            this._busy = false;
+        }
+    }
+
     async _setDns(targetDns) {
         this._busy = true;
         this._lblDNS.set_text(`Setting DNS to ${targetDns}...`);
@@ -350,7 +415,16 @@ class NetProfileIndicator extends PanelMenu.Button {
         this._lblGateway.set_text(`Gateway:   ${data.route_gateway || 'Unknown'}`);
         this._lblDNS.set_text(`DNS:       ${data.dns || 'Unknown'}`);
         this._lblNord.set_text(`NordVPN:   ${data.nordvpn_status} ${data.nordvpn_server ? `(${data.nordvpn_server})` : ''}`);
-        this._lblTailscale.set_text(`Tailscale: ${data.tailscale_up ? 'Connected' : 'Stopped'}`);
+        
+        let tsText = 'Tailscale: Stopped';
+        if (data.tailscale_up) {
+            if (data.tailscale_exit_node) {
+                tsText = `Tailscale: Connected (Exit Node: ${data.tailscale_exit_node})`;
+            } else {
+                tsText = `Tailscale: Connected (No exit node / Direct)`;
+            }
+        }
+        this._lblTailscale.set_text(tsText);
         this._lblTimezone.set_text(`Timezone:  ${data.timezone || 'Unknown'}`);
     }
 

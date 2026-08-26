@@ -63,6 +63,40 @@ def get_dns_servers():
             pass
     return ", ".join(dns_entries) if dns_entries else "Unknown"
 
+def get_tailscale_info():
+    rc, out, _ = run_cmd("tailscale status --json")
+    if rc != 0 or not out:
+        return False, None
+    try:
+        data = json.loads(out)
+        backend_state = data.get("BackendState")
+        if backend_state != "Running":
+            return False, None
+        
+        exit_node_name = None
+        exit_status = data.get("ExitNodeStatus")
+        if exit_status:
+            exit_node_id = exit_status.get("ID")
+            for _, peer in data.get("Peer", {}).items():
+                if peer.get("ID") == exit_node_id or peer.get("ExitNode") is True:
+                    dns_name = peer.get("DNSName", "").rstrip(".").split(".")[0]
+                    host_name = peer.get("HostName", "")
+                    exit_node_name = dns_name or host_name
+                    break
+            if not exit_node_name and exit_status.get("TailscaleIPs"):
+                exit_node_name = exit_status["TailscaleIPs"][0].split("/")[0]
+        return True, exit_node_name
+    except Exception:
+        _, text_out, _ = run_cmd("tailscale status")
+        if "Tailscale is stopped" in text_out or "Logged out" in text_out or not text_out:
+            return False, None
+        for line in text_out.splitlines():
+            if "exit node" in line and "active" in line:
+                parts = line.split()
+                if len(parts) >= 2:
+                    return True, parts[1]
+        return True, None
+
 def get_status():
     status = {
         "profile": "unknown",
@@ -77,6 +111,7 @@ def get_status():
         "nordvpn_server": None,
         "nordvpn_ip": None,
         "tailscale_up": False,
+        "tailscale_exit_node": None,
         "timezone": "unknown",
         "dns": get_dns_servers()
     }
@@ -108,12 +143,10 @@ def get_status():
     else:
         status["nordvpn_status"] = "Disconnected"
 
-    # 3. Tailscale
-    _, out, _ = run_cmd("tailscale status")
-    if "Tailscale is stopped" in out or "Logged out" in out or not out:
-        status["tailscale_up"] = False
-    else:
-        status["tailscale_up"] = True
+    # 3. Tailscale & Exit Node
+    ts_up, exit_node = get_tailscale_info()
+    status["tailscale_up"] = ts_up
+    status["tailscale_exit_node"] = exit_node
 
     # 4. Timezone
     _, out, _ = run_cmd("timedatectl show -p Timezone --value")
@@ -141,8 +174,12 @@ def get_status():
         if status["gateway_ip"] == "192.168.123.1":
             if status["tailscale_up"]:
                 status["profile"] = "direct_ts"
-                status["label"] = "⚡ Direct (.1) + Tailscale"
-                status["short_label"] = "⚡ .1 + TS"
+                if status["tailscale_exit_node"]:
+                    status["label"] = f"⚡ Direct (.1) + TS ({status['tailscale_exit_node']})"
+                    status["short_label"] = f"⚡ .1+TS [{status['tailscale_exit_node']}]"
+                else:
+                    status["label"] = "⚡ Direct (.1) + Tailscale"
+                    status["short_label"] = "⚡ .1 + TS"
                 status["icon"] = "network-wireless-symbolic"
             else:
                 status["profile"] = "direct_novpn"
@@ -151,8 +188,12 @@ def get_status():
                 status["icon"] = "network-wireless-symbolic"
         elif status["gateway_ip"] == "192.168.123.100":
             status["profile"] = "local"
-            status["label"] = "🏠 Local (.100)"
-            status["short_label"] = "🏠 Local"
+            if status["tailscale_up"] and status["tailscale_exit_node"]:
+                status["label"] = f"🏠 Local (.100) + TS ({status['tailscale_exit_node']})"
+                status["short_label"] = f"🏠 Loc [{status['tailscale_exit_node']}]"
+            else:
+                status["label"] = "🏠 Local (.100)"
+                status["short_label"] = "🏠 Local"
             status["icon"] = "network-workgroup-symbolic"
         else:
             status["profile"] = "custom"
@@ -189,7 +230,7 @@ def set_profile_direct_ts():
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
         "sudo timedatectl set-timezone Asia/Jakarta",
-        "sudo tailscale up --exit-node-allow-lan-access=true"
+        "sudo tailscale up"
     ]
     for c in cmds:
         run_cmd(c)
@@ -211,10 +252,18 @@ def set_profile_local():
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.100 dev wlp3s0",
         "sudo timedatectl set-timezone Asia/Jakarta",
-        "sudo tailscale up --exit-node-allow-lan-access=true"
+        "sudo tailscale up"
     ]
     for c in cmds:
         run_cmd(c)
+    return get_status()
+
+def set_exit_node(node_target):
+    target = node_target.strip().lower()
+    if target in ("none", "off", "disable", "direct", "0", ""):
+        run_cmd("sudo tailscale set --exit-node=\"\"")
+    else:
+        run_cmd(f"sudo tailscale set --exit-node={target} --exit-node-allow-lan-access=true")
     return get_status()
 
 def set_dns(dns_target):
@@ -267,6 +316,9 @@ def main():
         res = set_profile_direct_novpn()
     elif cmd in ("local", "normal", "repeater", "100"):
         res = set_profile_local()
+    elif cmd in ("exit-node", "exitnode", "exit_node", "exit"):
+        target = filtered_args[1] if len(filtered_args) > 1 else "none"
+        res = set_exit_node(target)
     elif cmd == "dns":
         target = filtered_args[1] if len(filtered_args) > 1 else "1.1.1.1"
         res = set_dns(target)
@@ -287,7 +339,11 @@ def main():
         print(f"Gateway:        {res.get('route_gateway')}")
         print(f"DNS Server(s):  {res.get('dns')}")
         print(f"NordVPN:        {res.get('nordvpn_status')} ({res.get('nordvpn_server') or 'None'})")
-        print(f"Tailscale:      {'Connected' if res.get('tailscale_up') else 'Stopped'}")
+        if res.get('tailscale_up'):
+            exit_node_info = f" (Exit Node: {res.get('tailscale_exit_node')})" if res.get('tailscale_exit_node') else " (No Exit Node / Direct)"
+            print(f"Tailscale:      Connected{exit_node_info}")
+        else:
+            print(f"Tailscale:      Stopped")
         print(f"Timezone:       {res.get('timezone')}")
 
 if __name__ == "__main__":
