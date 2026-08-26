@@ -13,6 +13,7 @@ Profiles:
 DNS Options:
 - 192.168.123.1 (Direct Fiber Router)
 - 192.168.123.100 (Repeater Hop)
+- 100.100.100.100 (Tailscale MagicDNS)
 - 1.1.1.1 (Cloudflare)
 - 8.8.8.8 (Google)
 """
@@ -188,7 +189,7 @@ def set_profile_direct_ts():
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
         "sudo timedatectl set-timezone Asia/Jakarta",
-        "sudo tailscale up"
+        "sudo tailscale up --exit-node-allow-lan-access=true"
     ]
     for c in cmds:
         run_cmd(c)
@@ -210,7 +211,7 @@ def set_profile_local():
         "nordvpn disconnect",
         "sudo ip route replace default via 192.168.123.100 dev wlp3s0",
         "sudo timedatectl set-timezone Asia/Jakarta",
-        "sudo tailscale up"
+        "sudo tailscale up --exit-node-allow-lan-access=true"
     ]
     for c in cmds:
         run_cmd(c)
@@ -224,6 +225,8 @@ def set_dns(dns_target):
         dns_ips = "192.168.123.1"
     elif target in ("100", "192.168.123.100", ".100", "repeater", "local"):
         dns_ips = "192.168.123.100"
+    elif target in ("100.100.100.100", "magicdns", "tailscale", "ts"):
+        dns_ips = "100.100.100.100"
     elif target in ("1.1.1.1", "cloudflare", "cf"):
         dns_ips = "1.1.1.1 1.0.0.1"
     elif target in ("8.8.8.8", "google", "goog"):

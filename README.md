@@ -42,6 +42,12 @@ net-profile direct-ts      # ⚡ Route .1 + Tailscale (No VPN)
 net-profile direct-novpn   # ⚡ Route .1 Clean (No VPN, No TS)
 net-profile local          # 🏠 Route .100 + Tailscale (Repeater)
 
+# Set DNS server
+net-profile dns 100.100.100.100  # Tailscale MagicDNS
+net-profile dns 1.1.1.1          # Cloudflare DNS
+net-profile dns 192.168.123.1    # Direct Fiber Router DNS
+net-profile dns 192.168.123.100  # Repeater DNS
+
 # Launch Chrome in Estonian timezone
 net-profile chrome --tz Europe/Tallinn
 ```

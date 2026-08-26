@@ -200,6 +200,14 @@ class NetProfileIndicator extends PanelMenu.Button {
         itemDns100.connect('activate', () => this._setDns('192.168.123.100'));
         this.menu.addMenuItem(itemDns100);
 
+        // DNS 100.100.100.100
+        const itemDnsTS = new PopupMenu.PopupImageMenuItem(
+            _('DNS: 100.100.100.100 (Tailscale MagicDNS)'),
+            'network-server-symbolic'
+        );
+        itemDnsTS.connect('activate', () => this._setDns('100.100.100.100'));
+        this.menu.addMenuItem(itemDnsTS);
+
         // DNS 1.1.1.1
         const itemDnsCF = new PopupMenu.PopupImageMenuItem(
             _('DNS: 1.1.1.1 (Cloudflare)'),
