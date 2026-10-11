@@ -10,9 +10,9 @@ GNOME Shell top-bar extension and CLI tool for instant switching and live monito
 - **One-Click Profile Switching**:
   - **🇪🇪 Estonia VPN**: Direct fiber gateway (`192.168.123.1`), Tailscale down, NordVPN to Estonia, and timezone `Europe/Tallinn` (EET/EEST).
   - **🇫🇮 Finland VPN**: Direct fiber gateway (`192.168.123.1`), Tailscale down, NordVPN to Finland, and timezone `Europe/Helsinki` (EET/EEST).
-  - **⚡ Direct Route .1 + Tailscale**: Direct fiber gateway (`192.168.123.1`), NordVPN disconnected, Tailscale up, timezone `Asia/Jakarta` (WIB).
-  - **⚡ Direct Route .1 Clean**: Direct fiber gateway (`192.168.123.1`), NordVPN disconnected, Tailscale down, timezone `Asia/Jakarta` (WIB).
-  - **🏠 Local Route .100**: Repeater gateway (`192.168.123.100`), NordVPN disconnected, Tailscale up, timezone `Asia/Jakarta` (WIB).
+  - **⚡ Direct Route .1 + Tailscale**: Direct fiber gateway (`192.168.123.1`), NordVPN disconnected, Tailscale up, default timezone (`Europe/Helsinki` or configured).
+  - **⚡ Direct Route .1 Clean**: Direct fiber gateway (`192.168.123.1`), NordVPN disconnected, Tailscale down, default timezone (`Europe/Helsinki` or configured).
+  - **🏠 Local Route .100**: Repeater gateway (`192.168.123.100`), NordVPN disconnected, Tailscale up, default timezone (`Europe/Helsinki` or configured).
 - **Live Diagnostics Dropdown**:
   - Active Profile Badge
   - Default Gateway (`192.168.123.1` direct vs `192.168.123.100` repeater)
@@ -41,6 +41,11 @@ net-profile finland        # 🇫🇮 Route .1 + NordVPN + EET
 net-profile direct-ts      # ⚡ Route .1 + Tailscale (No VPN)
 net-profile direct-novpn   # ⚡ Route .1 Clean (No VPN, No TS)
 net-profile local          # 🏠 Route .100 + Tailscale (Repeater)
+
+# Manage Default Timezone (persisted in ~/.config/net-profile/config.json)
+net-profile tz helsinki    # Set Europe/Helsinki as active & default
+net-profile tz jakarta     # Set Asia/Jakarta as active & default
+net-profile tz tallinn     # Set Europe/Tallinn as active & default
 
 # Set DNS server
 net-profile dns 100.100.100.100  # Tailscale MagicDNS

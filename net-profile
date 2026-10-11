@@ -23,6 +23,59 @@ import os
 import json
 import subprocess
 
+CONFIG_DIR = os.path.expanduser("~/.config/net-profile")
+CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
+
+def get_default_timezone():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                cfg = json.load(f)
+                tz = cfg.get("default_timezone")
+                if tz:
+                    return tz
+        except Exception:
+            pass
+    return "Europe/Helsinki"
+
+def save_default_timezone(tz):
+    try:
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        cfg = {}
+        if os.path.exists(CONFIG_PATH):
+            try:
+                with open(CONFIG_PATH, "r") as f:
+                    cfg = json.load(f)
+            except Exception:
+                cfg = {}
+        cfg["default_timezone"] = tz
+        with open(CONFIG_PATH, "w") as f:
+            json.dump(cfg, f, indent=2)
+    except Exception as e:
+        print(f"Warning: Could not save config: {e}", file=sys.stderr)
+
+def resolve_timezone(alias):
+    a = (alias or "").strip().lower()
+    mapping = {
+        "helsinki": "Europe/Helsinki",
+        "hel": "Europe/Helsinki",
+        "fi": "Europe/Helsinki",
+        "finland": "Europe/Helsinki",
+        "suomi": "Europe/Helsinki",
+        "tallinn": "Europe/Tallinn",
+        "tll": "Europe/Tallinn",
+        "ee": "Europe/Tallinn",
+        "estonia": "Europe/Tallinn",
+        "jakarta": "Asia/Jakarta",
+        "cgk": "Asia/Jakarta",
+        "id": "Asia/Jakarta",
+        "indonesia": "Asia/Jakarta",
+        "wib": "Asia/Jakarta",
+        "utc": "UTC",
+        "gmt": "UTC"
+    }
+    return mapping.get(a, alias.strip() if alias else None)
+
 def run_cmd(cmd):
     try:
         res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=25)
@@ -39,6 +92,11 @@ def get_default_interface():
             if idx + 1 < len(words):
                 return words[idx + 1]
     return "wlp3s0"
+
+def is_on_lab_network():
+    iface = get_default_interface()
+    _, out, _ = run_cmd(f"ip -o -4 addr show dev {iface}")
+    return "192.168.123." in out
 
 def get_dns_servers():
     dns_entries = []
@@ -113,6 +171,7 @@ def get_status():
         "tailscale_up": False,
         "tailscale_exit_node": None,
         "timezone": "unknown",
+        "default_timezone": get_default_timezone(),
         "dns": get_dns_servers()
     }
 
@@ -204,58 +263,79 @@ def get_status():
     return status
 
 def set_profile_estonia():
+    iface = get_default_interface()
     cmds = [
-        "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
         "sudo tailscale down",
         "nordvpn connect Estonia",
         "sudo timedatectl set-timezone Europe/Tallinn"
     ]
+    if is_on_lab_network():
+        cmds.insert(0, f"sudo ip route replace default via 192.168.123.1 dev {iface}")
     for c in cmds:
         run_cmd(c)
     return get_status()
 
 def set_profile_finland():
+    iface = get_default_interface()
     cmds = [
-        "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
         "sudo tailscale down",
         "nordvpn connect Finland",
         "sudo timedatectl set-timezone Europe/Helsinki"
     ]
+    if is_on_lab_network():
+        cmds.insert(0, f"sudo ip route replace default via 192.168.123.1 dev {iface}")
     for c in cmds:
         run_cmd(c)
     return get_status()
 
 def set_profile_direct_ts():
+    iface = get_default_interface()
+    def_tz = get_default_timezone()
     cmds = [
         "nordvpn disconnect",
-        "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
-        "sudo timedatectl set-timezone Asia/Jakarta",
+        f"sudo timedatectl set-timezone {def_tz}",
         "sudo tailscale up"
     ]
+    if is_on_lab_network():
+        cmds.insert(1, f"sudo ip route replace default via 192.168.123.1 dev {iface}")
     for c in cmds:
         run_cmd(c)
     return get_status()
 
 def set_profile_direct_novpn():
+    iface = get_default_interface()
+    def_tz = get_default_timezone()
     cmds = [
         "nordvpn disconnect",
-        "sudo ip route replace default via 192.168.123.1 dev wlp3s0",
         "sudo tailscale down",
-        "sudo timedatectl set-timezone Asia/Jakarta"
+        f"sudo timedatectl set-timezone {def_tz}"
     ]
+    if is_on_lab_network():
+        cmds.insert(1, f"sudo ip route replace default via 192.168.123.1 dev {iface}")
     for c in cmds:
         run_cmd(c)
     return get_status()
 
 def set_profile_local():
+    iface = get_default_interface()
+    def_tz = get_default_timezone()
     cmds = [
         "nordvpn disconnect",
-        "sudo ip route replace default via 192.168.123.100 dev wlp3s0",
-        "sudo timedatectl set-timezone Asia/Jakarta",
+        f"sudo timedatectl set-timezone {def_tz}",
         "sudo tailscale up"
     ]
+    if is_on_lab_network():
+        cmds.insert(1, f"sudo ip route replace default via 192.168.123.100 dev {iface}")
     for c in cmds:
         run_cmd(c)
+    return get_status()
+
+def set_timezone(tz_target=None):
+    if tz_target:
+        tz = resolve_timezone(tz_target)
+        if tz:
+            run_cmd(f"sudo timedatectl set-timezone {tz}")
+            save_default_timezone(tz)
     return get_status()
 
 def set_exit_node(node_target):
@@ -322,6 +402,9 @@ def main():
     elif cmd == "dns":
         target = filtered_args[1] if len(filtered_args) > 1 else "1.1.1.1"
         res = set_dns(target)
+    elif cmd in ("tz", "timezone"):
+        target_tz = filtered_args[1] if len(filtered_args) > 1 else None
+        res = set_timezone(target_tz)
     elif cmd == "chrome":
         tz = None
         if len(filtered_args) > 1:
@@ -344,7 +427,12 @@ def main():
             print(f"Tailscale:      Connected{exit_node_info}")
         else:
             print(f"Tailscale:      Stopped")
-        print(f"Timezone:       {res.get('timezone')}")
+        tz_str = res.get('timezone', 'Unknown')
+        def_tz = res.get('default_timezone')
+        if def_tz and def_tz != tz_str:
+            print(f"Timezone:       {tz_str} (Default: {def_tz})")
+        else:
+            print(f"Timezone:       {tz_str}")
 
 if __name__ == "__main__":
     main()
